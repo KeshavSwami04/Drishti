@@ -6,7 +6,9 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 client = chromadb.PersistentClient(path="./chroma_db")
 collection = client.get_or_create_collection(name="codebase")
 
-def search(query, n_results=3):
+from reranker import rerank
+
+def search(query, n_results=8):  # increase initial recall
     query_embedding = model.encode(query).tolist()
     
     results = collection.query(
@@ -21,6 +23,7 @@ def search(query, n_results=3):
             "filepath": results["metadatas"][0][i]["filepath"],
             "start_line": results["metadatas"][0][i]["start_line"]
         })
+    chunks = rerank(query, chunks)
     return chunks
 
 if __name__ == "__main__":

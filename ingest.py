@@ -6,16 +6,27 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 client = chromadb.PersistentClient(path="./chroma_db")
 collection = client.get_or_create_collection(name="codebase")
 
-def chunk_text(text, filepath, chunk_size=30):
-    lines = text.splitlines()
+import ast
+
+def chunk_python_code(code, filepath):
+    tree = ast.parse(code)
     chunks = []
-    for i in range(0, len(lines), chunk_size):
-        chunk = "\n".join(lines[i:i+chunk_size])
-        chunks.append({
-            "text": chunk,
-            "start_line": i + 1,
-            "filepath": filepath
-        })
+
+    lines = code.splitlines()
+
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            start = node.lineno
+            end = node.end_lineno
+
+            chunk = "\n".join(lines[start-1:end])
+
+            chunks.append({
+                "text": chunk,
+                "start_line": start,
+                "filepath": filepath
+            })
+
     return chunks
 
 def delete_file(filename):
@@ -23,22 +34,55 @@ def delete_file(filename):
     if results["ids"]:
         collection.delete(ids=results["ids"])
 
+        import ast
+
+def chunk_python_code(code, filepath):
+    tree = ast.parse(code)
+    chunks = []
+
+    lines = code.splitlines()
+
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            start = node.lineno
+            end = node.end_lineno
+
+            chunk = "\n".join(lines[start-1:end])
+
+            chunks.append({
+                "text": chunk,
+                "start_line": start,
+                "filepath": filepath
+            })
+
+    return chunks
+
 def ingest_file(filename, content):
     delete_file(filename)
-    chunks = chunk_text(content, filename)
+
+    # Choose chunking strategy
+    if filename.endswith(".py"):
+        chunks = chunk_python_code(content, filename)
+    else:
+        chunks = chunk_text(content, filename)
+
+    # Batch embedding (efficient)
+    texts = [c["text"] for c in chunks]
+    embeddings = model.encode(texts)
+
+    # Store in Chroma
     for idx, chunk in enumerate(chunks):
-        embedding = model.encode(chunk["text"]).tolist()
         collection.add(
             ids=[f"{filename}_{idx}"],
-            embeddings=[embedding],
+            embeddings=[embeddings[idx].tolist()],
             documents=[chunk["text"]],
             metadatas=[{
                 "filepath": chunk["filepath"],
                 "start_line": chunk["start_line"]
             }]
         )
-    return len(chunks)
 
+    return len(chunks)
 def get_ingested_files():
     results = collection.get()
     files = set()

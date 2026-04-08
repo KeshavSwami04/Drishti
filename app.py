@@ -8,6 +8,15 @@ from ingest import ingest_file, get_ingested_files, delete_file
 load_dotenv()
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
+SYSTEM_PROMPT = """You are Drishti, a code assistant.
+
+Rules:
+- Only answer using provided context
+- If unsure, say "I don't know"
+- Always cite file and line number
+- Be concise and accurate
+"""
+
 st.set_page_config(
     page_title="Drishti",
     page_icon="👁️",
@@ -168,12 +177,12 @@ user_input = st.chat_input("Ask anything about your code...")
 if user_input:
     chunks = search(user_input)
 
-    context = "\n\n".join([
-        f"File: {c['filepath']} (line {c['start_line']}):\n{c['text']}"
-        for c in chunks
-    ])
+    MAX_CONTEXT = 3000
 
-    augmented_prompt = f"""You are a helpful coding assistant called Drishti. 
+context = "\n\n".join([...])
+context = context[:MAX_CONTEXT]
+
+augmented_prompt = f"""You are a helpful coding assistant called Drishti. 
 Use the following code chunks to answer the user's question.
 Always mention which file and line number the answer comes from.
 Be concise and clear.
@@ -183,28 +192,35 @@ Relevant code:
 
 User question: {user_input}"""
 
-    st.session_state.messages.append({"role": "user", "content": augmented_prompt})
-    st.session_state.display_messages.append({"role": "user", "content": user_input})
+st.session_state.messages.append({"role": "user", "content": user_input})
+st.session_state.display_messages.append({"role": "user", "content": user_input})
 
-    with st.chat_message("user"):
+with st.chat_message("user"):
         st.write(user_input)
 
+try:
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=st.session_state.messages
     )
 
     answer = response.choices[0].message.content
-    sources = [{"filepath": c["filepath"], "start_line": c["start_line"]} for c in chunks]
 
-    st.session_state.messages.append({"role": "assistant", "content": answer})
-    st.session_state.display_messages.append({
+except Exception as e:
+    st.error("⚠️ LLM request failed. Please try again.")
+    answer = "Error: Could not generate response."
+
+answer = response.choices[0].message.content
+sources = [{"filepath": c["filepath"], "start_line": c["start_line"]} for c in chunks]
+
+st.session_state.messages.append({"role": "assistant", "content": answer})
+st.session_state.display_messages.append({
         "role": "assistant",
         "content": answer,
         "sources": sources
     })
 
-    with st.chat_message("assistant"):
+with st.chat_message("assistant"):
         st.write(answer)
         st.caption("Sources:")
         for source in sources:
