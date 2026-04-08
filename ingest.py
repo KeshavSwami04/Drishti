@@ -1,6 +1,5 @@
 import chromadb
 from sentence_transformers import SentenceTransformer
-
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
 client = chromadb.PersistentClient(path="./chroma_db")
@@ -28,6 +27,24 @@ def chunk_python_code(code, filepath):
             })
 
     return chunks
+def extract_calls(code, filename):
+    tree = ast.parse(code)
+    calls = []
+
+    class CallVisitor(ast.NodeVisitor):
+        def visit_FunctionDef(self, node):
+            for child in ast.walk(node):
+                if isinstance(child, ast.Call):
+                    if isinstance(child.func, ast.Name):
+                        calls.append({
+                            "caller": node.name,
+                            "callee": child.func.id,
+                            "file": filename
+                        })
+            self.generic_visit(node)
+
+    CallVisitor().visit(tree)
+    return calls
 
 def delete_file(filename):
     results = collection.get(where={"filepath": filename})
