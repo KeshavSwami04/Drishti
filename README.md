@@ -1,62 +1,80 @@
 # Drishti
 
-A codebase chat tool that lets you ask questions about your code in plain English.
+A codebase question-answering tool that lets you ask plain-English questions about your code and get answers grounded in the actual source, with file and line number citations.
 
 Live demo: https://drishti.streamlit.app
 
 ---
 
-## The Problem
+## Overview
 
-Reading unfamiliar code is slow. You either grep through files manually or context-switch between your editor and documentation. Drishti lets you just ask.
+Reading unfamiliar code is slow. Grepping through files or jumping between your editor and documentation breaks focus. Drishti lets you upload a codebase and ask questions directly, the way you would ask a colleague who has already read it.
+
+This project implements a RAG (Retrieval-Augmented Generation) pipeline. Uploaded files are split into chunks, embedded using a sentence-transformer model, and stored in a local vector database. At query time, the most semantically relevant chunks are retrieved, reranked, and passed as context to a large language model, which generates an answer based solely on your code.
 
 ---
 
 ## How It Works
 
-Upload a code file. Drishti splits it into chunks, converts each chunk into vector embeddings using sentence-transformers, and stores them in ChromaDB. When you ask a question, it embeds your query, retrieves the top 3 most relevant chunks by cosine similarity, and sends them as context to LLaMA 3.3 70B via Groq. The model answers based on your actual code, not general knowledge.
+1. **Ingestion.** A file is uploaded through the UI. For Python files, the code is parsed with the `ast` module and split at function and class boundaries. Other file types fall back to text-based chunking. Each chunk is embedded using `all-MiniLM-L6-v2` and stored in ChromaDB with its source file and line number as metadata.
 
-This architecture is called RAG — Retrieval Augmented Generation.
+2. **Retrieval.** When a question is submitted, it is embedded using the same model. ChromaDB performs an approximate nearest-neighbor search and returns the top 8 most similar chunks by cosine similarity.
+
+3. **Reranking.** The retrieved chunks are passed through a cross-encoder (`ms-marco-MiniLM-L-6-v2`) that scores each chunk against the query more precisely. The top 3 chunks after reranking are used as context.
+
+4. **Generation.** The reranked chunks and the user's question are sent to LLaMA 3.3 70B via the Groq API. The model is instructed to answer only from the provided context and to cite the source file and line number in every response.
 
 ---
 
 ## Features
 
-- Upload .py, .js, .ts, .java, .cpp, .c files
-- Ask natural language questions about your code
-- Every answer includes the source file and line number
-- Multiple files can be ingested and queried simultaneously
-- Files can be removed from the vector database from the sidebar
+- Supports `.py`, `.js`, `.ts`, `.java`, `.cpp`, and `.c` files
+- AST-based chunking for Python (preserves function and class boundaries)
+- Two-stage retrieval: vector search followed by cross-encoder reranking
+- Every answer cites the source file and line number
+- Multiple files can be ingested and queried at the same time
+- Files can be deleted from the vector store directly from the sidebar
 
 ---
 
 ## Tech Stack
 
-- Streamlit for the UI
-- sentence-transformers (all-MiniLM-L6-v2) for embeddings
-- ChromaDB as the vector store
-- Groq API (LLaMA 3.3 70B) for answer generation
-- Python
+| Component | Tool |
+|---|---|
+| UI | Streamlit |
+| Embeddings | sentence-transformers (`all-MiniLM-L6-v2`) |
+| Reranker | sentence-transformers (`ms-marco-MiniLM-L-6-v2`) |
+| Vector store | ChromaDB |
+| LLM | LLaMA 3.3 70B via Groq API |
+| Language | Python |
 
 ---
 
 ## Running Locally
 
-Clone the repo and install dependencies:
+**1. Clone the repository and set up a virtual environment:**
+
 ```bash
 git clone https://github.com/KeshavSwami04/Drishti.git
 cd Drishti
 python -m venv env
-env\Scripts\activate
+env\Scripts\activate        # Windows
+# source env/bin/activate   # macOS / Linux
 pip install -r requirements.txt
 ```
 
-Create a .env file with your Groq API key:
+**2. Add your Groq API key:**
 
+Create a `.env` file in the project root:
 
-Free API key at console.groq.com
+```
+GROQ_API_KEY=your_key_here
+```
 
-Run:
+A free API key is available at [console.groq.com](https://console.groq.com).
+
+**3. Run the app:**
+
 ```bash
 streamlit run app.py
 ```
@@ -65,10 +83,10 @@ streamlit run app.py
 
 ## Limitations
 
-ChromaDB runs locally, so ingested files reset when the Streamlit Cloud server restarts. A hosted vector database like Pinecone would fix this in production.
+ChromaDB is currently configured as a local persistent store. On hosted platforms like Streamlit Cloud, the database resets on each server restart, so ingested files are lost between sessions. Replacing ChromaDB with a hosted vector database such as Pinecone or Qdrant would resolve this in a production deployment.
 
 ---
 
 ## About
 
-Built by Keshav Swami, 2nd year Electrical Engineering at IIT Jodhpur.
+Built by Keshav Swami, second-year Electrical Engineering student at IIT Jodhpur.
