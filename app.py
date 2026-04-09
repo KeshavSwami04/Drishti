@@ -7,6 +7,7 @@ from ingest import ingest_file, get_ingested_files, delete_file
 import networkx as nx
 import matplotlib.pyplot as plt
 from ingest import ALL_CALLS
+import builtins
 
 load_dotenv()
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -76,6 +77,8 @@ for message in st.session_state.display_messages:
 user_input = st.chat_input("Ask anything about your code...")
 
 # ---------------- GRAPH BUTTON (ADDED, SAFE) ----------------
+import builtins
+
 if st.button("Show Call Graph"):
 
     if not ALL_CALLS:
@@ -83,23 +86,37 @@ if st.button("Show Call Graph"):
     else:
         G = nx.DiGraph()
 
-        # Build graph
-        for c in ALL_CALLS:
-            caller = c["caller"]
-            callee = c["callee"]
-            G.add_edge(caller, callee)
+        MAX_EDGES = 100
 
-        # Draw graph
-        plt.figure(figsize=(10, 7))
-        pos = nx.spring_layout(G, seed=42)
+        for i, c in enumerate(ALL_CALLS):
+            if i > MAX_EDGES:
+                break
+
+            if c["callee"] in dir(builtins):
+                continue
+
+            G.add_edge(c["caller"], c["callee"])
+
+        pos = nx.kamada_kawai_layout(G)
+
+        node_colors = []
+        for node in G.nodes():
+            if G.in_degree(node) == 0:
+                node_colors.append("lightgreen")
+            elif G.out_degree(node) == 0:
+                node_colors.append("orange")
+            else:
+                node_colors.append("lightblue")
+
+        plt.figure(figsize=(14, 10))
 
         nx.draw(
             G,
             pos,
             with_labels=True,
-            node_color="lightblue",
+            node_color=node_colors,
             node_size=2000,
-            font_size=10,
+            font_size=9,
             font_weight="bold"
         )
 

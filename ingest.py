@@ -1,11 +1,18 @@
 import chromadb
 from sentence_transformers import SentenceTransformer
-model = SentenceTransformer("all-MiniLM-L6-v2")
+model = None
+
+def get_model():
+    global model
+    if model is None:
+        model = SentenceTransformer("all-MiniLM-L6-v2")
+    return model
 
 client = chromadb.PersistentClient(path="./chroma_db")
 collection = client.get_or_create_collection(name="codebase")
 
 import ast
+ALL_CALLS = []
 
 def chunk_python_code(code, filepath):
     tree = ast.parse(code)
@@ -27,23 +34,35 @@ def chunk_python_code(code, filepath):
             })
 
     return chunks
-def extract_calls(code, filename):
+def extract_calls(code, filepath):
     tree = ast.parse(code)
+
+    defined_functions = set()
     calls = []
 
-    class CallVisitor(ast.NodeVisitor):
-        def visit_FunctionDef(self, node):
+    # 🔹 Step 1: collect defined functions
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            defined_functions.add(node.name)
+
+    # 🔹 Step 2: collect calls ONLY if internal
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            caller = node.name
+
             for child in ast.walk(node):
                 if isinstance(child, ast.Call):
-                    if isinstance(child.func, ast.Name):
-                        calls.append({
-                            "caller": node.name,
-                            "callee": child.func.id,
-                            "file": filename
-                        })
-            self.generic_visit(node)
 
-    CallVisitor().visit(tree)
+                    if isinstance(child.func, ast.Name):
+                        callee = child.func.id
+
+                        if callee in defined_functions:
+                            calls.append({
+                                "caller": caller,
+                                "callee": callee,
+                                "filepath": filepath
+                            })
+
     return calls
 
 def delete_file(filename):
@@ -77,17 +96,23 @@ def chunk_python_code(code, filepath):
 def ingest_file(filename, content):
     delete_file(filename)
 
-    # Choose chunking strategy
+    # 🔹 Choose chunking strategy
     if filename.endswith(".py"):
         chunks = chunk_python_code(content, filename)
+
+        # 🔥 NEW: extract function calls
+        global ALL_CALLS
+        calls = extract_calls(content, filename)
+        ALL_CALLS.extend(calls)
+
     else:
         chunks = chunk_text(content, filename)
 
-    # Batch embedding (efficient)
+    # 🔹 Batch embedding (efficient)
     texts = [c["text"] for c in chunks]
-    embeddings = model.encode(texts)
+    embeddings = get_model().encode(texts)
 
-    # Store in Chroma
+    # 🔹 Store in Chroma
     for idx, chunk in enumerate(chunks):
         collection.add(
             ids=[f"{filename}_{idx}"],
