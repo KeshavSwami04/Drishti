@@ -1,92 +1,166 @@
 # Drishti
 
-A codebase question-answering tool that lets you ask plain-English questions about your code and get answers grounded in the actual source, with file and line number citations.
+Drishti is a code intelligence tool that combines semantic search with static 
+analysis to let developers query and explore unfamiliar codebases through 
+natural language.
 
 Live demo: https://drishti.streamlit.app
+Code: https://github.com/KeshavSwami04/Drishti
 
 ---
 
-## Overview
+## What It Does
 
-Reading unfamiliar code is slow. Grepping through files or jumping between your editor and documentation breaks focus. Drishti lets you upload a codebase and ask questions directly, the way you would ask a colleague who has already read it.
+Upload any code file. Ask questions about it in plain English. Drishti finds 
+the relevant functions, answers your question with file and line attribution, 
+and can visualize how functions in your codebase call each other.
 
-This project implements a RAG (Retrieval-Augmented Generation) pipeline. Uploaded files are split into chunks, embedded using a sentence-transformer model, and stored in a local vector database. At query time, the most semantically relevant chunks are retrieved, reranked, and passed as context to a large language model, which generates an answer based solely on your code.
-
----
-
-## How It Works
-
-1. **Ingestion.** A file is uploaded through the UI. For Python files, the code is parsed with the `ast` module and split at function and class boundaries. Other file types fall back to text-based chunking. Each chunk is embedded using `all-MiniLM-L6-v2` and stored in ChromaDB with its source file and line number as metadata.
-
-2. **Retrieval.** When a question is submitted, it is embedded using the same model. ChromaDB performs an approximate nearest-neighbor search and returns the top 8 most similar chunks by cosine similarity.
-
-3. **Reranking.** The retrieved chunks are passed through a cross-encoder (`ms-marco-MiniLM-L-6-v2`) that scores each chunk against the query more precisely. The top 3 chunks after reranking are used as context.
-
-4. **Generation.** The reranked chunks and the user's question are sent to LLaMA 3.3 70B via the Groq API. The model is instructed to answer only from the provided context and to cite the source file and line number in every response.
+It does not keyword-match. It understands meaning.
 
 ---
 
-## Features
+## Architecture
 
-- Supports `.py`, `.js`, `.ts`, `.java`, `.cpp`, and `.c` files
-- AST-based chunking for Python (preserves function and class boundaries)
-- Two-stage retrieval: vector search followed by cross-encoder reranking
-- Every answer cites the source file and line number
-- Multiple files can be ingested and queried at the same time
-- Files can be deleted from the vector store directly from the sidebar
+The system has three independent layers: ingestion, retrieval, and interface.
+
+**Ingestion**
+
+When a file is uploaded, Drishti uses Python's built-in AST module to parse 
+the code rather than splitting it by line count. It walks the abstract syntax 
+tree and extracts each function and class definition as its own chunk, 
+preserving logical boundaries. This matters because a line-based splitter 
+would cut a function in half. An AST-based splitter respects the structure 
+of the code.
+
+Simultaneously, it performs static call analysis. For each function 
+definition, it walks the AST to find all function calls made inside it. 
+It then filters out external library calls by checking against Python's 
+builtins, keeping only calls to functions defined within the same file. 
+This produces a clean internal call graph without noise from imported 
+dependencies.
+
+Chunks are embedded in batch using SentenceTransformers and stored in 
+ChromaDB with metadata containing the source file and starting line number.
+
+**Retrieval**
+
+When a query comes in, it is embedded using the same model and used to 
+search ChromaDB for the top 8 semantically similar chunks. Those 8 candidates 
+are then passed to a CrossEncoder reranker, which scores each chunk against 
+the query more precisely than cosine similarity alone can. The top 3 are 
+returned as context.
+
+This two-stage retrieval (approximate nearest neighbor followed by 
+cross-encoder reranking) is a standard pattern in production search systems. 
+The first stage optimizes for recall, the second for precision.
+
+**Interface**
+
+The Streamlit UI handles file upload, chat history, source display, and call 
+graph rendering. The call graph is built using NetworkX and rendered with 
+Matplotlib. Nodes are color-coded: green for entry points with no callers, 
+orange for leaf functions with no callees, and blue for intermediate nodes.
+
+The system prompt constrains the LLM to only answer using provided context 
+and to always cite source location, reducing hallucination.
 
 ---
 
 ## Tech Stack
 
-| Component | Tool |
+| Component | Technology |
 |---|---|
-| UI | Streamlit |
-| Embeddings | sentence-transformers (`all-MiniLM-L6-v2`) |
-| Reranker | sentence-transformers (`ms-marco-MiniLM-L-6-v2`) |
+| Interface | Streamlit |
+| Embeddings | SentenceTransformers (all-MiniLM-L6-v2) |
+| Reranking | CrossEncoder (ms-marco-MiniLM-L-6-v2) |
 | Vector store | ChromaDB |
+| Static analysis | Python AST module |
+| Graph | NetworkX + Matplotlib |
 | LLM | LLaMA 3.3 70B via Groq API |
-| Language | Python |
 
 ---
 
-## Running Locally
+## Installation
 
-**1. Clone the repository and set up a virtual environment:**
+Clone the repository:
 
 ```bash
 git clone https://github.com/KeshavSwami04/Drishti.git
 cd Drishti
+```
+
+Create and activate a virtual environment:
+
+```bash
 python -m venv env
-env\Scripts\activate        # Windows
-# source env/bin/activate   # macOS / Linux
+env\Scripts\activate      # Windows
+source env/bin/activate   # Mac/Linux
+```
+
+Install dependencies:
+
+```bash
 pip install -r requirements.txt
 ```
 
-**2. Add your Groq API key:**
+Create a .env file with your Groq API key:
 
-Create a `.env` file in the project root:
 
-```
-GROQ_API_KEY=your_key_here
-```
 
-A free API key is available at [console.groq.com](https://console.groq.com).
 
-**3. Run the app:**
+---
 
-```bash
-streamlit run app.py
-```
+## Key Design Decisions
+
+**AST chunking over line chunking**
+Splitting by line count breaks functions at arbitrary points. Splitting by 
+AST node boundaries preserves logical units, which produces more focused 
+embeddings and more accurate retrieval.
+
+**Two-stage retrieval**
+Cosine similarity on embeddings is fast but imprecise for short queries. 
+The CrossEncoder reranker scores each candidate against the full query 
+jointly, which significantly improves precision at the cost of a small 
+latency increase. Retrieving 8 then reranking to 3 balances recall and 
+accuracy.
+
+**Internal call filtering**
+Showing all function calls in the graph including library functions like 
+print and len produces an unreadable graph. Filtering to only internally 
+defined functions makes the visualization meaningful.
+
+**Context length cap**
+Retrieved context is capped at 3000 characters before being sent to the 
+LLM. This prevents context window overflow on large files while keeping 
+the most relevant content.
+
+**Separated system prompt**
+The system prompt is defined separately from the user prompt and injected 
+as a system role message. This gives the LLM clearer behavioral constraints 
+than embedding instructions in the user turn.
 
 ---
 
 ## Limitations
 
-ChromaDB is currently configured as a local persistent store. On hosted platforms like Streamlit Cloud, the database resets on each server restart, so ingested files are lost between sessions. Replacing ChromaDB with a hosted vector database such as Pinecone or Qdrant would resolve this in a production deployment.
+ChromaDB runs on the local filesystem. On Streamlit Cloud, the filesystem 
+resets on server restart, so ingested files do not persist between sessions. 
+Replacing ChromaDB with a hosted vector database like Pinecone would fix this.
+
+AST-based call graph only works for Python files. Other languages fall back 
+to line-based chunking without call extraction.
+
+The reranker adds latency on large result sets. For production use, this 
+should run asynchronously or be cached.
 
 ---
 
-## About
+## Future Improvements
 
-Built by Keshav Swami, second-year Electrical Engineering student at IIT Jodhpur.
+- Pinecone integration for persistent cloud storage
+- GitHub URL ingestion to index entire repositories without manual upload
+- RAGAS evaluation framework to measure retrieval quality automatically
+- Support for AST parsing in JavaScript and TypeScript
+- Streaming LLM responses for faster perceived response time
+
+---
