@@ -1,34 +1,173 @@
-from sentence_transformers import SentenceTransformer
+import logging
+from typing import List, Dict
+
 import chromadb
-
-model = SentenceTransformer("all-MiniLM-L6-v2")
-
-client = chromadb.PersistentClient(path="./chroma_db")
-collection = client.get_or_create_collection(name="codebase")
+from sentence_transformers import SentenceTransformer
 
 from reranker import rerank
 
-def search(query, n_results=8):  # increase initial recall
-    query_embedding = model.encode(query).tolist()
-    
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=n_results
-    )
-    
-    chunks = []
-    for i in range(len(results["documents"][0])):
-        chunks.append({
-            "text": results["documents"][0][i],
-            "filepath": results["metadatas"][0][i]["filepath"],
-            "start_line": results["metadatas"][0][i]["start_line"]
-        })
-    chunks = rerank(query, chunks)
-    return chunks
+# =========================================================
+# Logging Configuration
+# =========================================================
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# =========================================================
+# Embedding Model Loader
+# Lazy loads the model only once
+# =========================================================
+
+model = None
+
+
+def get_model():
+    """
+    Load and cache embedding model.
+
+    Returns:
+        SentenceTransformer: Embedding model instance
+    """
+
+    global model
+
+    if model is None:
+        logger.info("Loading search embedding model...")
+        model = SentenceTransformer("all-MiniLM-L6-v2")
+
+    return model
+
+
+# =========================================================
+# ChromaDB Initialization
+# =========================================================
+
+client = chromadb.PersistentClient(path="./chroma_db")
+
+collection = client.get_or_create_collection(
+    name="codebase"
+)
+
+# =========================================================
+# Semantic Search Pipeline
+# =========================================================
+
+def search(
+    query: str,
+    n_results: int = 8
+) -> List[Dict]:
+    """
+    Perform semantic retrieval over ingested codebase.
+
+    Workflow:
+    1. Embed query
+    2. Retrieve top candidates from ChromaDB
+    3. Rerank using CrossEncoder
+    4. Return best chunks
+
+    Args:
+        query (str): User query
+        n_results (int): Initial retrieval count
+
+    Returns:
+        List[Dict]: Ranked code chunks
+    """
+
+    # -----------------------------------------------------
+    # Validate input
+    # -----------------------------------------------------
+
+    if not query.strip():
+        logger.warning("Empty query received")
+        return []
+
+    try:
+
+        # -------------------------------------------------
+        # Query Embedding
+        # -------------------------------------------------
+
+        model = get_model()
+
+        query_embedding = model.encode(query).tolist()
+
+        # -------------------------------------------------
+        # Vector Search
+        # -------------------------------------------------
+
+        results = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=n_results
+        )
+
+        # -------------------------------------------------
+        # Empty Retrieval Handling
+        # -------------------------------------------------
+
+        if not results["documents"][0]:
+            logger.warning("No search results found")
+            return []
+
+        # -------------------------------------------------
+        # Build Chunk Objects
+        # -------------------------------------------------
+
+        chunks = []
+
+        for i in range(len(results["documents"][0])):
+
+            chunks.append({
+                "text": results["documents"][0][i],
+                "filepath": results["metadatas"][0][i]["filepath"],
+                "start_line": results["metadatas"][0][i]["start_line"]
+            })
+
+        # -------------------------------------------------
+        # CrossEncoder Reranking
+        # -------------------------------------------------
+
+        try:
+
+            chunks = rerank(query, chunks)
+
+        except Exception as rerank_error:
+
+            logger.exception(
+                f"Reranking failed: {str(rerank_error)}"
+            )
+
+        logger.info(
+            f"Retrieved {len(chunks)} chunks for query"
+        )
+
+        return chunks
+
+    except Exception as e:
+
+        logger.exception(
+            f"Search pipeline failed: {str(e)}"
+        )
+
+        return []
+
+
+# =========================================================
+# Local Testing Entry Point
+# =========================================================
 
 if __name__ == "__main__":
-    results = search("how does the chat input work")
+
+    results = search(
+        "how does the chat input work"
+    )
+
     for chunk in results:
-        print(f"File: {chunk['filepath']} | Line: {chunk['start_line']}")
+
+        print(
+            f"File: {chunk['filepath']} "
+            f"| Line: {chunk['start_line']}"
+        )
+
         print(chunk["text"])
-        print("---")
+
+        print("-" * 60)
