@@ -65,6 +65,22 @@ def extract_calls(code, filepath):
 
     return calls
 
+def chunk_text(content, filepath, chunk_size=40):
+    lines = content.splitlines()
+    chunks = []
+
+    for i in range(0, len(lines), chunk_size):
+        chunk = "\n".join(lines[i:i+chunk_size])
+
+        chunks.append({
+            "text": chunk,
+            "start_line": i + 1,
+            "filepath": filepath
+        })
+
+    return chunks
+
+
 def delete_file(filename):
     results = collection.get(where={"filepath": filename})
     if results["ids"]:
