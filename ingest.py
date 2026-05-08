@@ -72,27 +72,6 @@ def delete_file(filename):
 
         import ast
 
-def chunk_python_code(code, filepath):
-    tree = ast.parse(code)
-    chunks = []
-
-    lines = code.splitlines()
-
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
-            start = node.lineno
-            end = node.end_lineno
-
-            chunk = "\n".join(lines[start-1:end])
-
-            chunks.append({
-                "text": chunk,
-                "start_line": start,
-                "filepath": filepath
-            })
-
-    return chunks
-
 def ingest_file(filename, content):
     delete_file(filename)
 
