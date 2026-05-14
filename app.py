@@ -463,34 +463,49 @@ MAX_HISTORY = 10
 
 st.markdown("---")
 
-uploaded_file = st.file_uploader(
-    "Upload a code file",
-    type=["py", "js", "ts", "java", "cpp", "c"]
+uploaded_files = st.file_uploader(
+    "Upload code files",
+    type=["py", "js", "ts", "java", "cpp", "c"],
+    accept_multiple_files=True
 )
 
-if uploaded_file is not None:
+if uploaded_files:
 
-    try:
-        content = uploaded_file.read().decode("utf-8")
-        filename = uploaded_file.name
+    if st.button("⬆ Ingest File"):
 
-        if st.button("⬆ Ingest File"):
+        total_chunks = 0
+
+        try:
 
             with st.spinner("Analyzing and indexing codebase..."):
-                count = ingest_file(filename, content)
 
-            if count > 0:
-                st.success(f"✓ Successfully ingested {count} chunks from {filename}")
-                logger.info(f"Ingested file: {filename}")
-            else:
-                st.warning("No valid chunks were generated.")
+                for uploaded_file in uploaded_files:
 
-    except UnicodeDecodeError:
-        st.error("Unable to decode uploaded file.")
+                    content = uploaded_file.read().decode("utf-8")
 
-    except Exception as e:
-        logger.exception("File ingestion failed")
-        st.error(f"Ingestion failed: {str(e)}")
+                    filename = uploaded_file.name
+
+                    count = ingest_file(
+                        filename,
+                        content
+                    )
+
+                    total_chunks += count
+
+                    logger.info(f"Ingested file: {filename}")
+
+            st.success(
+                f"✓ Successfully ingested "
+                f"{len(uploaded_files)} files "
+                f"with {total_chunks} chunks"
+            )
+
+        except UnicodeDecodeError:
+            st.error("Unable to decode one of the uploaded files.")
+
+        except Exception as e:
+            logger.exception("File ingestion failed")
+            st.error(f"Ingestion failed: {str(e)}")
 
 # =========================================================
 # Sidebar — Ingested Files
