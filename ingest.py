@@ -54,12 +54,6 @@ collection = client.get_or_create_collection(
 # =========================================================
 # Call Graph Storage
 # Stores extracted internal function calls per file
-#
-# Structure:
-# {
-#     "app.py": [...],
-#     "search.py": [...]
-# }
 # =========================================================
 
 CALL_GRAPH_STORE = {}
@@ -73,15 +67,6 @@ CALL_GRAPH_STORE = {}
 def chunk_python_code(code: str, filepath: str) -> List[Dict]:
     """
     Chunk Python source code using AST nodes.
-
-    Each function and class becomes an independent chunk.
-
-    Args:
-        code (str): Source code content
-        filepath (str): Name of source file
-
-    Returns:
-        List[Dict]: List of code chunks with metadata
     """
 
     try:
@@ -125,14 +110,6 @@ def chunk_text(
 ) -> List[Dict]:
     """
     Split generic text files into fixed-size chunks.
-
-    Args:
-        content (str): File content
-        filepath (str): Source filename
-        chunk_size (int): Number of lines per chunk
-
-    Returns:
-        List[Dict]: List of text chunks
     """
 
     lines = content.splitlines()
@@ -154,22 +131,11 @@ def chunk_text(
 
 # =========================================================
 # Internal Function Call Extraction
-# Builds lightweight static call graph using AST
 # =========================================================
 
 def extract_calls(code: str, filepath: str) -> List[Dict]:
     """
     Extract internal function-to-function calls.
-
-    Only tracks calls between functions defined
-    within the same file.
-
-    Args:
-        code (str): Python source code
-        filepath (str): Source filename
-
-    Returns:
-        List[Dict]: Caller-callee relationships
     """
 
     try:
@@ -209,7 +175,6 @@ def extract_calls(code: str, filepath: str) -> List[Dict]:
 
                         callee = child.func.id
 
-                        # Only keep internal calls
                         if callee in defined_functions:
 
                             calls.append({
@@ -223,17 +188,11 @@ def extract_calls(code: str, filepath: str) -> List[Dict]:
 
 # =========================================================
 # File Deletion
-# Removes file embeddings and graph data
 # =========================================================
 
 def delete_file(filename: str):
     """
     Delete all vector entries associated with a file.
-
-    Also clears corresponding call graph data.
-
-    Args:
-        filename (str): File to remove
     """
 
     results = collection.get(
@@ -255,36 +214,29 @@ def delete_file(filename: str):
 
 # =========================================================
 # Main Ingestion Pipeline
-# Handles chunking, embeddings, and vector storage
 # =========================================================
 
 def ingest_file(filename: str, content: str) -> int:
     """
     Ingest a file into the vector database.
-
-    Workflow:
-    1. Remove existing entries
-    2. Chunk source code
-    3. Extract call graph (Python only)
-    4. Generate embeddings
-    5. Store in ChromaDB
-
-    Args:
-        filename (str): Name of uploaded file
-        content (str): Raw file content
-
-    Returns:
-        int: Number of chunks ingested
     """
 
     logger.info(f"Starting ingestion for {filename}")
 
+    # -----------------------------------------------------
     # Remove old entries before re-ingesting
+    # -----------------------------------------------------
+
     delete_file(filename)
 
+    # -----------------------------------------------------
     # Prevent ingestion of empty files
+    # -----------------------------------------------------
+
     if not content.strip():
+
         logger.warning(f"{filename} is empty")
+
         return 0
 
     # -----------------------------------------------------
@@ -293,24 +245,65 @@ def ingest_file(filename: str, content: str) -> int:
 
     if filename.endswith(".py"):
 
-        chunks = chunk_python_code(content, filename)
+        # ---------------------------------------------
+        # Try AST-based semantic chunking first
+        # ---------------------------------------------
 
-        calls = extract_calls(content, filename)
+        chunks = chunk_python_code(
+            content,
+            filename
+        )
+
+        # ---------------------------------------------
+        # Fallback:
+        # If no functions/classes are found,
+        # use generic text chunking instead.
+        # ---------------------------------------------
+
+        if not chunks:
+
+            logger.warning(
+                f"No AST chunks found in {filename}. "
+                "Falling back to text chunking."
+            )
+
+            chunks = chunk_text(
+                content,
+                filename
+            )
+
+        # ---------------------------------------------
+        # Extract internal function call graph
+        # ---------------------------------------------
+
+        calls = extract_calls(
+            content,
+            filename
+        )
 
         CALL_GRAPH_STORE[filename] = calls
 
     # -----------------------------------------------------
-    # Generic fallback chunking
+    # Generic fallback chunking for non-Python files
     # -----------------------------------------------------
 
     else:
 
-        chunks = chunk_text(content, filename)
+        chunks = chunk_text(
+            content,
+            filename
+        )
 
+    # -----------------------------------------------------
     # Prevent empty chunk insertion
+    # -----------------------------------------------------
+
     if not chunks:
 
-        logger.warning(f"No chunks generated for {filename}")
+        logger.warning(
+            f"No chunks generated for {filename}"
+        )
+
         return 0
 
     # -----------------------------------------------------
@@ -337,7 +330,9 @@ def ingest_file(filename: str, content: str) -> int:
             }]
         )
 
-    logger.info(f"Ingested {len(chunks)} chunks from {filename}")
+    logger.info(
+        f"Ingested {len(chunks)} chunks from {filename}"
+    )
 
     return len(chunks)
 
@@ -349,9 +344,6 @@ def ingest_file(filename: str, content: str) -> int:
 def get_ingested_files() -> List[str]:
     """
     Fetch all unique ingested filenames.
-
-    Returns:
-        List[str]: List of filenames
     """
 
     results = collection.get()

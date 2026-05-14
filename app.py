@@ -499,33 +499,107 @@ if uploaded_file is not None:
 st.sidebar.markdown(
     """
     <div style="
-        font-family: 'Bebas Neue', Impact, sans-serif;
-        font-size: 1.4rem;
-        letter-spacing: 0.15em;
-        background: linear-gradient(135deg, #c9a84c, #f5e070, #c9a84c);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+        display: flex;
+        align-items: center;
+        gap: 10px;
         margin-bottom: 12px;
-    ">👁️ &nbsp;Ingested Files</div>
+    ">
+        <div style="
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%,
+                rgba(201,168,76,0.25) 0%,
+                rgba(10,10,15,0.95) 70%
+            );
+            border: 1.5px solid rgba(201,168,76,0.6);
+            box-shadow: 0 0 10px rgba(201,168,76,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        ">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <ellipse cx="12" cy="12" rx="10" ry="6" stroke="#c9a84c" stroke-width="1.8"/>
+                <circle cx="12" cy="12" r="3" fill="#c9a84c"/>
+                <circle cx="13" cy="11" r="1" fill="rgba(255,255,255,0.4)"/>
+            </svg>
+        </div>
+        <div style="
+            font-family: 'Bebas Neue', Impact, sans-serif;
+            font-size: 1.4rem;
+            letter-spacing: 0.15em;
+            background: linear-gradient(135deg, #c9a84c, #f5e070, #c9a84c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        ">Ingested Files</div>
+    </div>
     """,
     unsafe_allow_html=True
 )
 
 ingested_files = get_ingested_files()
 
+# Inject sidebar row CSS once
+st.sidebar.markdown("""
+<style>
+.file-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+    gap: 8px;
+}
+.file-name {
+    color: rgba(255,255,255,0.75);
+    font-size: 0.83rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+/* Shrink only the delete button column in sidebar */
+section[data-testid="stSidebar"] [data-testid="column"]:last-child {
+    flex: 0 0 28px !important;
+    min-width: 28px !important;
+    width: 28px !important;
+}
+section[data-testid="stSidebar"] [data-testid="column"]:last-child .stButton > button {
+    width: 28px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 0 !important;
+    border-radius: 8px !important;
+    font-size: 0.75rem !important;
+    line-height: 1 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+section[data-testid="stSidebar"] [data-testid="column"]:first-child {
+    display: flex !important;
+    align-items: center !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 if ingested_files:
 
     for file in ingested_files:
 
-        col1, col2 = st.sidebar.columns([4, 1])
+        col1, col2 = st.sidebar.columns([6, 1])
 
         col1.markdown(
-            f'<span style="color:rgba(255,255,255,0.75); font-size:0.85rem;">📄 {file}</span>',
+            f'<div style="display:flex;align-items:center;height:28px;">'
+            f'<span style="color:rgba(255,255,255,0.75);font-size:0.83rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📄 {file}</span>'
+            f'</div>',
             unsafe_allow_html=True
         )
 
-        if col2.button("✕", key=f"delete_{file}"):
+        if col2.button("✕", key=f"delete_{file}", use_container_width=True):
 
             try:
                 delete_file(file)
@@ -583,7 +657,8 @@ if not ingested_files:
 
 for message in st.session_state.display_messages:
 
-    with st.chat_message(message["role"]):
+    avatar = "👁️" if message["role"] == "assistant" else "🔷"
+    with st.chat_message(message["role"], avatar=avatar):
 
         # Render markdown/HTML properly
         st.markdown(message["content"], unsafe_allow_html=True)
@@ -685,7 +760,7 @@ if user_input:
         "content": user_input
     })
 
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar="🔷"):
         st.markdown(user_input, unsafe_allow_html=True)
 
     try:
@@ -756,7 +831,7 @@ User Question:
         "sources": sources
     })
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar="👁️"):
 
         # FIX: render with markdown so HTML in responses displays correctly
         st.markdown(answer, unsafe_allow_html=True)
