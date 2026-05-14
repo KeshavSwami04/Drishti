@@ -2,7 +2,7 @@ import logging
 from typing import List, Dict
 
 import chromadb
-from sentence_transformers import SentenceTransformer
+from model import get_model
 
 from reranker import rerank
 
@@ -12,30 +12,6 @@ from reranker import rerank
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# =========================================================
-# Embedding Model Loader
-# Lazy loads the model only once
-# =========================================================
-
-model = None
-
-
-def get_model():
-    """
-    Load and cache embedding model.
-
-    Returns:
-        SentenceTransformer: Embedding model instance
-    """
-
-    global model
-
-    if model is None:
-        logger.info("Loading search embedding model...")
-        model = SentenceTransformer("all-MiniLM-L6-v2")
-
-    return model
 
 
 # =========================================================

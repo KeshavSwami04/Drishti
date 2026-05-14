@@ -3,7 +3,7 @@ import logging
 from typing import List, Dict
 
 import chromadb
-from sentence_transformers import SentenceTransformer
+from model import get_model
 
 
 # =========================================================
@@ -12,31 +12,6 @@ from sentence_transformers import SentenceTransformer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-# =========================================================
-# Embedding Model Loader
-# Lazy loads the model only once for efficiency
-# =========================================================
-
-model = None
-
-
-def get_model():
-    """
-    Load and cache the embedding model.
-
-    Returns:
-        SentenceTransformer: Embedding model instance
-    """
-
-    global model
-
-    if model is None:
-        logger.info("Loading embedding model...")
-        model = SentenceTransformer("all-MiniLM-L6-v2")
-
-    return model
 
 
 # =========================================================

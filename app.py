@@ -731,7 +731,7 @@ if st.button("📊 Show Call Graph"):
                 font_size=9,
                 font_weight="bold",
                 font_color="#f0f0f8",
-                edge_color="rgba(201,168,76,0.3)",
+                edge_color=(0.79, 0.66, 0.30, 0.3),
                 width=1.5,
                 arrows=True,
                 arrowsize=16,
