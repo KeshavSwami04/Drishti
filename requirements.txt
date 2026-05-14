@@ -3,7 +3,7 @@ python-dotenv==1.1.0
 groq==0.24.0
 
 sentence-transformers==4.1.0
-torch==2.7.0
+torch
 
 chromadb==1.0.8
 protobuf==3.20.3
