@@ -1,166 +1,354 @@
 # Drishti
 
-Drishti is a code intelligence tool that combines semantic search with static 
-analysis to let developers query and explore unfamiliar codebases through 
-natural language.
+AI-powered repository intelligence system for semantic code understanding using AST analysis, hybrid retrieval, and retrieval-augmented generation.
 
-Live demo: https://drishti.streamlit.app
-Code: https://github.com/KeshavSwami04/Drishti
-
----
-
-## What It Does
-
-Upload any code file. Ask questions about it in plain English. Drishti finds 
-the relevant functions, answers your question with file and line attribution, 
-and can visualize how functions in your codebase call each other.
-
-It does not keyword-match. It understands meaning.
+<p align="center">
+  <a href="https://askdrishti.streamlit.app/">Live Demo</a>
+  ·
+  <a href="https://github.com/KeshavSwami04/Drishti">Repository</a>
+</p>
 
 ---
 
-## Architecture
+## Overview
 
-The system has three independent layers: ingestion, retrieval, and interface.
+Drishti helps developers explore unfamiliar codebases using natural language.
 
-**Ingestion**
+Instead of relying on keyword search, the system performs semantic retrieval over structurally meaningful code chunks extracted through static analysis. Retrieved context is then passed through a retrieval-augmented generation pipeline to generate grounded responses with source attribution.
 
-When a file is uploaded, Drishti uses Python's built-in AST module to parse 
-the code rather than splitting it by line count. It walks the abstract syntax 
-tree and extracts each function and class definition as its own chunk, 
-preserving logical boundaries. This matters because a line-based splitter 
-would cut a function in half. An AST-based splitter respects the structure 
-of the code.
+The project combines:
 
-Simultaneously, it performs static call analysis. For each function 
-definition, it walks the AST to find all function calls made inside it. 
-It then filters out external library calls by checking against Python's 
-builtins, keeping only calls to functions defined within the same file. 
-This produces a clean internal call graph without noise from imported 
-dependencies.
-
-Chunks are embedded in batch using SentenceTransformers and stored in 
-ChromaDB with metadata containing the source file and starting line number.
-
-**Retrieval**
-
-When a query comes in, it is embedded using the same model and used to 
-search ChromaDB for the top 8 semantically similar chunks. Those 8 candidates 
-are then passed to a CrossEncoder reranker, which scores each chunk against 
-the query more precisely than cosine similarity alone can. The top 3 are 
-returned as context.
-
-This two-stage retrieval (approximate nearest neighbor followed by 
-cross-encoder reranking) is a standard pattern in production search systems. 
-The first stage optimizes for recall, the second for precision.
-
-**Interface**
-
-The Streamlit UI handles file upload, chat history, source display, and call 
-graph rendering. The call graph is built using NetworkX and rendered with 
-Matplotlib. Nodes are color-coded: green for entry points with no callers, 
-orange for leaf functions with no callees, and blue for intermediate nodes.
-
-The system prompt constrains the LLM to only answer using provided context 
-and to always cite source location, reducing hallucination.
+- Semantic vector retrieval
+- AST-based code parsing
+- CrossEncoder reranking
+- Static call graph analysis
+- Retrieval-augmented generation
+- Interactive repository exploration
 
 ---
 
-## Tech Stack
+# Core Capabilities
 
-| Component | Technology |
+- AST-based semantic chunking for Python files
+- Hybrid retrieval pipeline with reranking
+- Retrieval-augmented code understanding
+- Internal function call graph visualization
+- Multi-file semantic indexing
+- Source-grounded responses with file references
+- Lazy-loaded embedding and reranker models
+- Interactive repository exploration UI
+
+---
+
+# Why Drishti?
+
+Modern repositories are difficult to navigate due to scale, architectural complexity, and fragmented implementation logic.
+
+Drishti explores how semantic retrieval, static analysis, and retrieval-augmented generation can be combined to improve repository comprehension and developer onboarding.
+
+The system is designed as an engineering-focused exploration of AI-assisted code intelligence rather than a generic chatbot interface.
+
+---
+
+# System Architecture
+
+```text
+                ┌──────────────────────┐
+                │   Uploaded Files     │
+                └──────────┬───────────┘
+                           │
+                           ▼
+                ┌──────────────────────┐
+                │  AST/Text Chunking   │
+                │ + Call Extraction    │
+                └──────────┬───────────┘
+                           │
+                           ▼
+                ┌──────────────────────┐
+                │ SentenceTransformer  │
+                │   Embedding Model    │
+                └──────────┬───────────┘
+                           │
+                           ▼
+                ┌──────────────────────┐
+                │      ChromaDB        │
+                │   Vector Database    │
+                └──────────┬───────────┘
+                           │
+                    User Query
+                           │
+                           ▼
+                ┌──────────────────────┐
+                │ Semantic Retrieval   │
+                └──────────┬───────────┘
+                           ▼
+                ┌──────────────────────┐
+                │ CrossEncoder         │
+                │ Reranking            │
+                └──────────┬───────────┘
+                           ▼
+                ┌──────────────────────┐
+                │  LLaMA 3.3 via Groq  │
+                └──────────┬───────────┘
+                           ▼
+                ┌──────────────────────┐
+                │ Grounded Response    │
+                │ + Source Attribution │
+                └──────────────────────┘
+```
+
+---
+
+# Retrieval Pipeline
+
+## Stage 1: Semantic Retrieval
+
+- Query embeddings generated using `all-MiniLM-L6-v2`
+- ChromaDB retrieves semantically similar chunks
+- Top-k candidate retrieval optimized for recall
+
+---
+
+## Stage 2: CrossEncoder Reranking
+
+Retrieved chunks are reranked using:
+
+```text
+cross-encoder/ms-marco-MiniLM-L-6-v2
+```
+
+This improves precision by scoring query-document relevance jointly instead of relying only on embedding similarity.
+
+---
+
+## Stage 3: Grounded Generation
+
+Top-ranked chunks are injected into a constrained LLM prompt using:
+
+```text
+LLaMA 3.3 70B via Groq API
+```
+
+Responses are grounded in retrieved repository context and include source references.
+
+---
+
+# Static Analysis Engine
+
+The ingestion pipeline performs:
+
+### AST Parsing
+
+Python files are converted into abstract syntax trees using the built-in `ast` module.
+
+---
+
+### Semantic Chunk Extraction
+
+Functions and classes are extracted as independent retrieval units instead of arbitrary fixed-size line windows.
+
+This preserves semantic structure and improves retrieval quality.
+
+---
+
+### Internal Call Extraction
+
+The system statically extracts:
+
+- caller → callee relationships
+- internal function dependencies
+- repository execution flow
+
+These relationships are used to construct interactive call graph visualizations.
+
+---
+
+### Vector Storage
+
+Embeddings and metadata are stored inside ChromaDB for semantic retrieval.
+
+---
+
+# Tech Stack
+
+| Layer | Technology |
 |---|---|
-| Interface | Streamlit |
-| Embeddings | SentenceTransformers (all-MiniLM-L6-v2) |
-| Reranking | CrossEncoder (ms-marco-MiniLM-L-6-v2) |
-| Vector store | ChromaDB |
-| Static analysis | Python AST module |
-| Graph | NetworkX + Matplotlib |
-| LLM | LLaMA 3.3 70B via Groq API |
+| Frontend | Streamlit |
+| Embedding Model | SentenceTransformers |
+| Reranker | CrossEncoder |
+| Vector Database | ChromaDB |
+| Static Analysis | Python AST |
+| Visualization | NetworkX + Matplotlib |
+| LLM | LLaMA 3.3 via Groq |
+| Language | Python |
 
 ---
 
-## Installation
+# Repository Structure
 
-Clone the repository:
+```text
+Drishti/
+│
+├── app.py              # Streamlit frontend and chat pipeline
+├── ingest.py           # AST chunking and ingestion pipeline
+├── search.py           # Semantic retrieval pipeline
+├── reranker.py         # CrossEncoder reranking
+├── model.py            # Shared embedding model loader
+├── graph.py            # Call graph construction
+├── eval.py             # Local retrieval testing
+├── requirements.txt
+└── README.md
+```
+
+---
+
+# Running Locally
+
+## Clone Repository
 
 ```bash
 git clone https://github.com/KeshavSwami04/Drishti.git
+
 cd Drishti
 ```
 
-Create and activate a virtual environment:
+---
+
+## Create Virtual Environment
+
+### Windows
 
 ```bash
 python -m venv env
-env\Scripts\activate      # Windows
-source env/bin/activate   # Mac/Linux
+
+env\Scripts\activate
 ```
 
-Install dependencies:
+### Linux / macOS
+
+```bash
+python -m venv env
+
+source env/bin/activate
+```
+
+---
+
+## Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Create a .env file with your Groq API key:
+---
 
+## Configure Environment Variables
 
+Create a `.env` file:
 
+```env
+GROQ_API_KEY=your_api_key_here
+```
 
 ---
 
-## Key Design Decisions
+## Start Application
 
-**AST chunking over line chunking**
-Splitting by line count breaks functions at arbitrary points. Splitting by 
-AST node boundaries preserves logical units, which produces more focused 
-embeddings and more accurate retrieval.
-
-**Two-stage retrieval**
-Cosine similarity on embeddings is fast but imprecise for short queries. 
-The CrossEncoder reranker scores each candidate against the full query 
-jointly, which significantly improves precision at the cost of a small 
-latency increase. Retrieving 8 then reranking to 3 balances recall and 
-accuracy.
-
-**Internal call filtering**
-Showing all function calls in the graph including library functions like 
-print and len produces an unreadable graph. Filtering to only internally 
-defined functions makes the visualization meaningful.
-
-**Context length cap**
-Retrieved context is capped at 3000 characters before being sent to the 
-LLM. This prevents context window overflow on large files while keeping 
-the most relevant content.
-
-**Separated system prompt**
-The system prompt is defined separately from the user prompt and injected 
-as a system role message. This gives the LLM clearer behavioral constraints 
-than embedding instructions in the user turn.
+```bash
+streamlit run app.py
+```
 
 ---
 
-## Limitations
+# Example Queries
 
-ChromaDB runs on the local filesystem. On Streamlit Cloud, the filesystem 
-resets on server restart, so ingested files do not persist between sessions. 
-Replacing ChromaDB with a hosted vector database like Pinecone would fix this.
+```text
+How does semantic retrieval work?
 
-AST-based call graph only works for Python files. Other languages fall back 
-to line-based chunking without call extraction.
+Explain the ingestion pipeline.
 
-The reranker adds latency on large result sets. For production use, this 
-should run asynchronously or be cached.
+Where is the embedding model initialized?
+
+How are function calls extracted?
+
+Where is reranking implemented?
+```
+
+---
+
+# Key Engineering Decisions
+
+## AST-Based Chunking Instead of Fixed Windows
+
+Preserves logical structure and improves retrieval quality compared to arbitrary line-based chunking.
 
 ---
 
-## Future Improvements
+## Hybrid Retrieval Architecture
 
-- Pinecone integration for persistent cloud storage
-- GitHub URL ingestion to index entire repositories without manual upload
-- RAGAS evaluation framework to measure retrieval quality automatically
-- Support for AST parsing in JavaScript and TypeScript
-- Streaming LLM responses for faster perceived response time
+Combines embedding-based recall with CrossEncoder precision.
+
+This improves contextual relevance significantly over pure vector similarity search.
 
 ---
+
+## Shared Lazy-Loaded Models
+
+Embedding and reranker models are initialized globally only once to reduce memory overhead and startup latency.
+
+---
+
+## Source-Grounded Responses
+
+The LLM is constrained to answer only using retrieved context, reducing hallucinations and improving reliability.
+
+---
+
+# Current Limitation
+
+The current deployment uses a shared local ChromaDB instance.
+
+As a result, uploaded files are shared across active users on the hosted deployment.
+
+Example:
+
+- User A uploads files
+- User B opening the application may see those indexed files
+
+This occurs because the vector database is stored on the shared Streamlit Cloud filesystem.
+
+## Planned Production Fix
+
+Production deployment would isolate users using:
+
+- Session-scoped vector collections
+- Hosted vector databases
+- Authentication and workspace isolation
+- Multi-tenant retrieval architecture
+
+---
+
+# Future Improvements
+
+- Repository-wide GitHub ingestion
+- Persistent hosted vector database
+- JavaScript and TypeScript AST support
+- Streaming LLM responses
+- Dockerized deployment
+- Repository summarization mode
+- Multi-user workspace isolation
+
+---
+
+# Live Application
+
+https://askdrishti.streamlit.app/
+
+---
+
+# Author
+
+Keshav Swami  
+Electrical Engineering, IIT Jodhpur
+
+GitHub: https://github.com/KeshavSwami04
